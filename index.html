@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ledger — bet tracker</title>
+<style>
+:root{
+  --ink:#0d0f12;
+  --panel:#16191f;
+  --panel-2:#1d212a;
+  --line:#2a2f3a;
+  --muted:#8a93a6;
+  --text:#e8ebf1;
+  --chalk:#f4f1e8;
+  --green:#36d399;
+  --green-dim:#1f6f53;
+  --red:#f06b6b;
+  --red-dim:#7a3636;
+  --amber:#e8b04b;
+  --accent:#c7f24a;
+  --void:#5a6478;
+  --radius:14px;
+  --mono:"SFMono-Regular",ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+[data-theme="light"]{
+  --ink:#f4f2ec; --panel:#fffdf8; --panel-2:#f0ede4; --line:#ddd8cb;
+  --muted:#6b7280; --text:#1a1d23; --chalk:#1a1d23; --void:#9aa0ad;
+  --green-dim:#bfe9d4; --red-dim:#f3cccc;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--sans); background:var(--ink); color:var(--text);
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+a{color:inherit}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+
+/* ---- shell ---- */
+.app{max-width:1100px;margin:0 auto;padding:0 16px}
+header.top{
+  display:flex;align-items:center;gap:14px;
+  padding:18px 16px 14px; max-width:1100px; margin:0 auto;
+  position:sticky;top:0;background:var(--ink);z-index:30;
+}
+.brand{display:flex;align-items:baseline;gap:9px;margin-right:auto}
+.brand b{font-size:21px;font-weight:800;letter-spacing:-.02em}
+.brand .dot{color:var(--accent)}
+.brand span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.18em}
+.iconbtn{
+  width:38px;height:38px;border-radius:10px;border:1px solid var(--line);
+  background:var(--panel);display:grid;place-items:center;color:var(--text);
+  transition:.15s;font-size:16px
+}
+.iconbtn:hover{border-color:var(--void)}
+.btn{
+  border:1px solid var(--line);background:var(--panel);color:var(--text);
+  padding:9px 16px;border-radius:10px;font-weight:600;transition:.15s;font-size:14px
+}
+.btn:hover{border-color:var(--void)}
+.btn.primary{background:var(--accent);color:#10130a;border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--red);border-color:var(--red-dim)}
+
+/* ---- tabs ---- */
+nav.tabs{display:flex;gap:4px;padding:0 16px;max-width:1100px;margin:0 auto 10px;
+  border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{
+  padding:11px 14px;color:var(--muted);font-weight:600;font-size:14px;
+  border-bottom:2px solid transparent;white-space:nowrap
+}
+nav.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+
+/* ---- stat cards ---- */
+.statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.stat .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)}
+.stat .val{font-size:28px;font-weight:800;letter-spacing:-.02em;margin-top:6px;font-family:var(--mono)}
+.stat .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.pos{color:var(--green)} .neg{color:var(--red)}
+
+/* ---- panels ---- */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+.panel h3{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:14px;font-weight:700}
+
+/* ---- bet rows ---- */
+.bet{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;background:var(--panel);transition:.15s}
+.bet:hover{border-color:var(--void)}
+.bet .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bet .sel{font-weight:700;font-size:15px}
+.bet .legs{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+.bet .leg{font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.bet .leg .lg-odds{margin-left:auto;font-family:var(--mono);color:var(--text)}
+.bet .meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted);align-items:center}
+.bet .meta b{color:var(--text);font-family:var(--mono)}
+.tag{display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:11px;color:var(--muted)}
+.pill{padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.pill.win{background:var(--green-dim);color:var(--green)}
+.pill.lose{background:var(--red-dim);color:var(--red)}
+.pill.pending{background:var(--panel-2);color:var(--amber);border:1px solid var(--line)}
+.pill.void{background:var(--panel-2);color:var(--void)}
+.pill.push{background:var(--panel-2);color:var(--muted)}
+.typebadge{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700}
+
+.rowbtns{display:flex;gap:6px;margin-left:auto}
+.minibtn{font-size:12px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--muted)}
+.minibtn:hover{color:var(--text);border-color:var(--void)}
+.minibtn.w:hover{color:var(--green);border-color:var(--green-dim)}
+.minibtn.l:hover{color:var(--red);border-color:var(--red-dim)}
+
+/* ---- form / modal ---- */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px}
+.scrim.open{display:flex}
+.modal{background:var(--ink);border:1px solid var(--line);border-radius:18px;width:100%;max-width:620px;padding:22px;margin:auto 0}
+.modal h2{font-size:18px;font-weight:800;letter-spacing:-.01em;margin-bottom:2px}
+.modal .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600}
+.input,select.input,textarea.input{
+  width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:10px 12px;color:var(--text);transition:.15s
+}
+.input:focus,select.input:focus,textarea.input:focus{outline:none;border-color:var(--accent)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.seg{display:flex;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.seg button{flex:1;padding:9px 8px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--panel-2);color:var(--text)}
+.legrow{display:grid;grid-template-columns:1fr 90px 34px;gap:8px;margin-bottom:8px;align-items:center}
+.legrow .input{margin:0}
+.delleg{width:34px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--red);font-size:18px}
+
+/* ---- staking box ---- */
+.stakebox{background:var(--panel-2);border:1px dashed var(--void);border-radius:12px;padding:14px;margin-top:6px}
+.stakebox .big{font-size:26px;font-weight:800;font-family:var(--mono);color:var(--accent)}
+.stakebox .edge{font-size:13px;margin-top:4px}
+.suggestbtn{font-size:12px;padding:6px 12px;border:1px solid var(--accent);color:var(--accent);border-radius:8px;background:transparent;font-weight:700}
+
+/* ---- filters ---- */
+.filterbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.filterbar select,.filterbar input{
+  background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:13px
+}
+.chip{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:13px;color:var(--muted);font-weight:600}
+.chip.on{background:var(--accent);color:#10130a;border-color:var(--accent)}
+
+/* ---- empty ---- */
+.empty{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty .e-mark{font-size:40px;margin-bottom:12px}
+.empty b{display:block;color:var(--text);font-size:16px;margin-bottom:4px}
+
+/* ---- bars (analytics) ---- */
+.barrow{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:13px}
+.barrow .name{width:120px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bartrack{flex:1;height:22px;background:var(--panel-2);border-radius:6px;overflow:hidden;position:relative;display:flex}
+.barfill{height:100%;border-radius:6px}
+.barrow .num{width:78px;text-align:right;font-family:var(--mono);font-size:13px}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--line);padding:11px 18px;border-radius:10px;font-size:14px;z-index:99;opacity:0;transition:.25s;pointer-events:none}
+.toast.show{opacity:1}
+
+footer{text-align:center;color:var(--muted);font-size:12px;padding:30px 0 40px}
+
+@media(max-width:680px){
+  .statgrid{grid-template-columns:1fr 1fr}
+  .row3{grid-template-columns:1fr}
+  .stat .val{font-size:23px}
+  .brand span{display:none}
+  .legrow{grid-template-columns:1fr 80px 30px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body data-theme="dark">
+
+<header class="top">
+  <div class="brand"><b>Ledger<span class="dot">.</span></b><span>bet tracker</span></div>
+  <button class="iconbtn" id="oddsFmtBtn" title="Toggle odds format">DEC</button>
+  <button class="iconbtn" id="themeBtn" title="Toggle theme">◐</button>
+  <button class="btn primary" id="addBtn">+ New bet</button>
+</header>
+
+<nav class="tabs">
+  <button data-tab="dash" class="on">Dashboard</button>
+  <button data-tab="bets">Bets</button>
+  <button data-tab="analytics">Analytics</button>
+  <button data-tab="data">Backup</button>
+</nav>
+
+<main class="app">
+  <section id="tab-dash"></section>
+  <section id="tab-bets" hidden></section>
+  <section id="tab-analytics" hidden></section>
+  <section id="tab-data" hidden></section>
+</main>
+
+<footer>Ledger runs entirely in your browser. Nothing leaves this device. Back up often.</footer>
+
+<!-- ===== Bet modal ===== -->
+<div class="scrim" id="scrim">
+  <div class="modal" id="modal"><!-- injected --></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   Ledger — a free, local-first bet tracker
+   Storage: localStorage (JSON). Works offline, on GitHub Pages.
+   ============================================================ */
+
+const LS_KEY = "ledger.bets.v1";
+const LS_SET = "ledger.settings.v1";
+
+// ---------- state ----------
+let bets = load(LS_KEY, []);
+let settings = load(LS_SET, {
+  theme:"dark", oddsFormat:"dec", currency:"$",
+  bankroll:1000, kellyFraction:0.25, defaultUnit:10
+});
+let activeTab = "dash";
+let filter = {status:"all", type:"all", sport:"", q:""};
+
+// ---------- storage ----------
+function load(k,fb){ try{ const v=JSON.parse(localStorage.getItem(k)); return v??fb; }catch{ return fb; } }
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(bets)); localStorage.setItem(LS_SET, JSON.stringify(settings)); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+// ---------- odds math ----------
+function decToAmerican(d){ if(!d||d<=1) return "—"; return d>=2 ? "+"+Math.round((d-1)*100) : "-"+Math.round(100/(d-1)); }
+function americanToDec(a){ a=parseFloat(a); if(!a) return null; return a>0 ? a/100+1 : 100/(-a)+1; }
+function fmtOdds(d){ if(!d) return "—"; return settings.oddsFormat==="dec" ? d.toFixed(2) : decToAmerican(d); }
+function impliedProb(d){ return d>0 ? 1/d : 0; }
+
+// combined decimal odds of a bet's legs (parlay = product)
+function betDecOdds(b){
+  if(b.manualOdds) return b.manualOdds;            // user override (their bookie's printed parlay price)
+  if(!b.legs.length) return 0;
+  return b.legs.reduce((p,l)=> p*(l.odds||1), 1);
+}
+
+// profit if won (stake returned separately): payout = stake*odds ; profit = stake*(odds-1)
+function settledProfit(b){
+  const stake=b.stake||0, odds=betDecOdds(b);
+  if(b.status==="won")  return stake*(odds-1);
+  if(b.status==="lost") return -stake;
+  if(b.status==="void"||b.status==="push") return 0;
+  if(b.status==="half-won") return stake*(odds-1)/2;
+  if(b.status==="half-lost") return -stake/2;
+  return 0; // pending
+}
+
+// ---------- Kelly staking ----------
+// edge from your "true" decimal odds vs the bookie line
+function kellyStake(bookieDec, trueDec, bankroll, frac){
+  const p = impliedProb(trueDec);          // your estimated win prob
+  const b = bookieDec - 1;                  // net odds received
+  if(b<=0) return {stake:0, edgePct:0, kelly:0, p};
+  const q = 1-p;
+  const k = (b*p - q)/b;                     // full Kelly fraction
+  const edgePct = (p*bookieDec - 1)*100;     // expected value %
+  const stake = Math.max(0, k*frac*bankroll);
+  return {stake, edgePct, kelly:k, p};
+}
+
+// ============================================================
+//  RENDER
+// ============================================================
+const $ = s=>document.querySelector(s);
+const cur = ()=>settings.currency;
+function money(n){ const s=n<0?"-":""; return s+cur()+Math.abs(n).toFixed(2); }
+function pct(n){ return (n>=0?"+":"")+n.toFixed(1)+"%"; }
+
+function aggregate(list){
+  const settled = list.filter(b=>["won","lost","void","push","half-won","half-lost"].includes(b.status));
+  const staked = settled.reduce((s,b)=>s+(b.stake||0),0);
+  const profit = settled.reduce((s,b)=>s+settledProfit(b),0);
+  const wins = settled.filter(b=>b.status==="won"||b.status==="half-won").length;
+  const decided = settled.filter(b=>!["void","push"].includes(b.status)).length;
+  const pending = list.filter(b=>b.status==="pending");
+  const pendingStake = pending.reduce((s,b)=>s+(b.stake||0),0);
+  return {
+    profit, staked,
+    roi: staked? profit/staked*100 : 0,
+    winRate: decided? wins/decided*100 : 0,
+    count: settled.length, wins, decided,
+    pendingCount: pending.length, pendingStake,
+    avgOdds: settled.length? settled.reduce((s,b)=>s+betDecOdds(b),0)/settled.length : 0
+  };
+}
+
+function renderDash(){
+  const a = aggregate(bets);
+  const el = $("#tab-dash");
+  if(!bets.length){ el.innerHTML = emptyState(); return; }
+  el.innerHTML = `
+    <div class="statgrid">
+      <div class="stat"><div class="lbl">Net profit</div>
+        <div class="val ${a.profit>=0?'pos':'neg'}">${money(a.profit)}</div>
+        <div class="sub">${a.count} settled bets</div></div>
+      <div class="stat"><div class="lbl">ROI</div>
+        <div class="val ${a.roi>=0?'pos':'neg'}">${pct(a.roi)}</div>
+        <div class="sub">on ${money(a.staked)} staked</div></div>
+      <div class="stat"><div class="lbl">Win rate</div>
+        <div class="val">${a.winRate.toFixed(0)}%</div>
+        <div class="sub">${a.wins}/${a.decided} decided</div></div>
+      <div class="stat"><div class="lbl">Pending</div>
+        <div class="val">${a.pendingCount}</div>
+        <div class="sub">${money(a.pendingStake)} at risk</div></div>
+    </div>
+    <div class="panel">
+      <h3>Bankroll & staking</h3>
+      <div class="row3">
+        <div class="field"><label>Bankroll (${cur()})</label>
+          <input class="input mono" type="number" id="bankrollInp" value="${settings.bankroll}"></div>
+        <div class="field"><label>Kelly fraction</label>
+          <select class="input" id="kellyInp">
+            ${[["1","Full Kelly (aggressive)"],["0.5","Half Kelly"],["0.25","Quarter Kelly (recommended)"],["0.1","Tenth Kelly (conservative)"]]
+              .map(([v,t])=>`<option value="${v}" ${+v===settings.kellyFraction?"selected":""}>${t}</option>`).join("")}
+          </select></div>
+        <div class="field"><label>Default unit (${cur()})</label>
+          <input class="input mono" type="number" id="unitInp" value="${settings.defaultUnit}"></div>
+      </div>
+      <p class="muted" style="font-size:13px">The stake suggester uses these. Enter your bookie's odds and your own estimated win % when adding a bet, and Ledger sizes the stake by the Kelly criterion.</p>
+    </div>
+    <div class="panel">
+      <h3>Recent activity</h3>
+      ${bets.slice().sort(byDate).slice(0,5).map(betCard).join("") || '<p class="muted">No bets yet.</p>'}
+    </div>`;
+  $("#bankrollInp").onchange=e=>{settings.bankroll=+e.target.value||0;save();};
+  $("#kellyInp").onchange=e=>{settings.kellyFraction=+e.target.value;save();};
+  $("#unitInp").onchange=e=>{settings.defaultUnit=+e.target.value||0;save();};
+}
+
+function emptyState(){
+  return `<div class="empty">
+    <div class="e-mark">📒</div>
+    <b>Your ledger is empty</b>
+    No bets tracked yet. Log your first single, parlay, or bet builder to see profit, ROI and win-rate build up.
+    <div style="margin-top:18px"><button class="btn primary" onclick="openModal()">+ Log your first bet</button></div>
+  </div>`;
+}
+
+function byDate(a,b){ return (b.date||"").localeCompare(a.date||"") || (b.created||0)-(a.created||0); }
+
+function statusPill(s){
+  const map={won:"win",lost:"lose",pending:"pending",void:"void",push:"push","half-won":"win","half-lost":"lose"};
+  const label={"half-won":"½ won","half-lost":"½ lost"}[s]||s;
+  return `<span class="pill ${map[s]||'pending'}">${label}</span>`;
+}
+
+function betCard(b){
+  const odds=betDecOdds(b);
+  const profit=settledProfit(b);
+  const isMulti=b.legs.length>1;
+  const typeLabel={single:"Single",parlay:b.legs.length+"-leg parlay",builder:"Bet builder"}[b.type]||b.type;
+  return `<div class="bet" data-id="${b.id}">
+    <div class="head">
+      <span class="typebadge">${typeLabel}</span>
+      ${b.sport?`<span class="tag">${esc(b.sport)}</span>`:""}
+      ${statusPill(b.status)}
+      <div class="rowbtns">
+        ${b.status==="pending"?`
+          <button class="minibtn w" onclick="settle('${b.id}','won')">Won</button>
+          <button class="minibtn l" onclick="settle('${b.id}','lost')">Lost</button>`:""}
+        <button class="minibtn" onclick="openModal('${b.id}')">Edit</button>
+        <button class="minibtn" onclick="shareBet('${b.id}')">Share</button>
+      </div>
+    </div>
+    <div class="legs">
+      ${b.legs.map(l=>`<div class="leg"><span>${esc(l.sel||"—")}</span>
+        <span class="lg-odds">${fmtOdds(l.odds)}</span></div>`).join("")}
+    </div>
+    <div class="meta">
+      <span>Stake <b>${money(b.stake||0)}</b></span>
+      <span>${isMulti?"Combined":"Odds"} <b>${fmtOdds(odds)}</b></span>
+      <span>To return <b>${money((b.stake||0)*odds)}</b></span>
+      ${b.status!=="pending"?`<span>P/L <b class="${profit>=0?'pos':'neg'}">${money(profit)}</b></span>`:""}
+      ${b.date?`<span>${b.date}</span>`:""}
+      ${b.book?`<span class="tag">${esc(b.book)}</span>`:""}
+      ${(b.tags||[]).map(t=>`<span class="tag">#${esc(t)}</span>`).join("")}
+    </div>
+    ${b.note?`<div class="meta"><span class="muted" style="font-style:italic">“${esc(b.note)}”</span></div>`:""}
+  </div>`;
+}
+
+function renderBets(){
+  const el=$("#tab-bets");
+  const sports=[...new Set(bets.map(b=>b.sport).filter(Boolean))];
+  let list=bets.slice().sort(byDate);
+  if(filter.status!=="all") list=list.filter(b=>b.status===filter.status||(filter.status==="settled"&&b.status!=="pending"));
+  if(filter.type!=="all") list=list.filter(b=>b.type===filter.type);
+  if(filter.sport) list=list.filter(b=>b.sport===filter.sport);
+  if(filter.q){ const q=filter.q.toLowerCase();
+    list=list.filter(b=> JSON.stringify(b).toLowerCase().includes(q)); }
+
+  el.innerHTML=`
+    <div class="filterbar">
+      ${["all","pending","won","lost","settled"].map(s=>
+        `<button class="chip ${filter.status===s?'on':''}" onclick="setFilter('status','${s}')">${s[0].toUpperCase()+s.slice(1)}</button>`).join("")}
+      <select onchange="setFilter('type',this.value)">
+        <option value="all">All types</option>
+        ${["single","parlay","builder"].map(t=>`<option value="${t}" ${filter.type===t?"selected":""}>${t}</option>`).join("")}
+      </select>
+      ${sports.length?`<select onchange="setFilter('sport',this.value)">
+        <option value="">All sports</option>
+        ${sports.map(s=>`<option value="${esc(s)}" ${filter.sport===s?"selected":""}>${esc(s)}</option>`).join("")}
+      </select>`:""}
+      <input placeholder="Search…" value="${esc(filter.q)}" oninput="setFilter('q',this.value)" style="margin-left:auto;min-width:140px">
+    </div>
+    ${list.length? list.map(betCard).join("") :
+      `<div class="empty"><div class="e-mark">🔍</div><b>No bets match</b>Try clearing the filters.</div>`}`;
+}
+
+function setFilter(k,v){ filter[k]=v; renderBets(); }
+
+function renderAnalytics(){
+  const el=$("#tab-analytics");
+  const settled=bets.filter(b=>b.status!=="pending");
+  if(!settled.length){ el.innerHTML=`<div class="empty"><div class="e-mark">📊</div><b>No data yet</b>Settle some bets to see your breakdowns.</div>`; return; }
+
+  function group(keyFn){
+    const m={};
+    settled.forEach(b=>{ const k=keyFn(b)||"—"; (m[k]??={p:0,s:0,n:0}); m[k].p+=settledProfit(b); m[k].s+=b.stake||0; m[k].n++; });
+    return Object.entries(m).map(([k,v])=>({k,profit:v.p,roi:v.s?v.p/v.s*100:0,n:v.n})).sort((a,b)=>b.profit-a.profit);
+  }
+  const bySport=group(b=>b.sport);
+  const byBook=group(b=>b.book);
+  const byType=group(b=>b.type);
+
+  const maxAbs=arr=>Math.max(1,...arr.map(x=>Math.abs(x.profit)));
+  function bars(arr){
+    const mx=maxAbs(arr);
+    return arr.map(x=>{
+      const w=Math.abs(x.profit)/mx*100;
+      const pos=x.profit>=0;
+      return `<div class="barrow">
+        <div class="name" title="${esc(x.k)}">${esc(x.k)} <span class="muted">(${x.n})</span></div>
+        <div class="bartrack">
+          <div class="barfill" style="width:${w}%;background:${pos?'var(--green)':'var(--red)'};margin-left:${pos?'0':'auto'}"></div>
+        </div>
+        <div class="num ${pos?'pos':'neg'}">${money(x.profit)}</div>
+      </div>`;
+    }).join("");
+  }
+
+  // simple cumulative profit sparkline
+  const series=settled.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")||a.created-b.created);
+  let cum=0; const pts=series.map(b=>{cum+=settledProfit(b); return cum;});
+  const w=600,h=120,mn=Math.min(0,...pts),mx=Math.max(0,...pts),rng=(mx-mn)||1;
+  const path=pts.map((y,i)=>{const X=pts.length>1?i/(pts.length-1)*w:0;const Y=h-((y-mn)/rng)*h;return (i?"L":"M")+X.toFixed(1)+" "+Y.toFixed(1);}).join(" ");
+  const zeroY=h-((0-mn)/rng)*h;
+
+  el.innerHTML=`
+    <div class="panel">
+      <h3>Cumulative profit</h3>
+      <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:130px">
+        <line x1="0" y1="${zeroY}" x2="${w}" y2="${zeroY}" stroke="var(--line)" stroke-dasharray="4 4"/>
+        <path d="${path}" fill="none" stroke="${cum>=0?'var(--green)':'var(--red)'}" stroke-width="2.5" stroke-linejoin="round"/>
+      </svg>
+      <p class="muted" style="font-size:13px">Final: <b class="${cum>=0?'pos':'neg'}">${money(cum)}</b> over ${series.length} settled bets.</p>
+    </div>
+    <div class="panel"><h3>Profit by sport</h3>${bars(bySport)}</div>
+    <div class="panel"><h3>Profit by bookmaker</h3>${bars(byBook)}</div>
+    <div class="panel"><h3>Profit by bet type</h3>${bars(byType)}</div>`;
+}
+
+function renderData(){
+  const el=$("#tab-data");
+  el.innerHTML=`
+    <div class="panel">
+      <h3>Backup & restore</h3>
+      <p class="muted" style="font-size:14px;margin-bottom:14px">Your bets live in this browser only. Export regularly — to a file you keep, or commit it to your own GitHub repo to sync across devices.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" onclick="exportJSON()">⤓ Export JSON</button>
+        <button class="btn" onclick="exportCSV()">⤓ Export CSV (Excel)</button>
+        <label class="btn ghost" style="cursor:pointer">⤒ Import JSON
+          <input type="file" accept="application/json" style="display:none" onchange="importJSON(event)"></label>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Preferences</h3>
+      <div class="row3">
+        <div class="field"><label>Currency symbol</label>
+          <input class="input" id="curInp" value="${esc(settings.currency)}" maxlength="3"></div>
+        <div class="field"><label>Odds format</label>
+          <select class="input" id="fmtSel">
+            <option value="dec" ${settings.oddsFormat==="dec"?"selected":""}>Decimal (1.91)</option>
+            <option value="am" ${settings.oddsFormat==="am"?"selected":""}>American (-110)</option>
+          </select></div>
+        <div class="field"><label>Theme</label>
+          <select class="input" id="thmSel">
+            <option value="dark" ${settings.theme==="dark"?"selected":""}>Dark</option>
+            <option value="light" ${settings.theme==="light"?"selected":""}>Light</option>
+          </select></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Danger zone</h3>
+      <button class="btn danger" onclick="wipe()">Delete all bets</button>
+    </div>
+    <div class="panel">
+      <h3>${bets.length} bets stored · ${(JSON.stringify(bets).length/1024).toFixed(1)} KB</h3>
+      <p class="muted" style="font-size:13px">Free forever. No account, no server, no fees.</p>
+    </div>`;
+  $("#curInp").onchange=e=>{settings.currency=e.target.value||"$";save();renderAll();};
+  $("#fmtSel").onchange=e=>{settings.oddsFormat=e.target.value;save();renderAll();syncTopBtns();};
+  $("#thmSel").onchange=e=>{settings.theme=e.target.value;applyTheme();save();};
+}
+
+function renderAll(){ renderDash(); renderBets(); renderAnalytics(); renderData(); }
+
+// ============================================================
+//  MODAL (add / edit bet)
+// ============================================================
+let draft=null;
+
+function openModal(id){
+  draft = id ? structuredClone(bets.find(b=>b.id===id))
+             : { id:uid(), created:Date.now(), type:"single",
+                 legs:[{sel:"",odds:null}], stake:settings.defaultUnit,
+                 status:"pending", date:new Date().toISOString().slice(0,10),
+                 sport:"", book:"", tags:[], note:"", manualOdds:null,
+                 trueOdds:null };
+  drawModal();
+  $("#scrim").classList.add("open");
+}
+function closeModal(){ $("#scrim").classList.remove("open"); draft=null; }
+
+function drawModal(){
+  const d=draft;
+  const editing=bets.some(b=>b.id===d.id);
+  const combined=betDecOdds(d);
+  $("#modal").innerHTML=`
+    <h2>${editing?"Edit bet":"New bet"}</h2>
+    <div class="sub">Singles, parlays, and bet builders. Enter the odds your bookie shows.</div>
+
+    <div class="field"><label>Bet type</label>
+      <div class="seg" id="typeSeg">
+        ${[["single","Single"],["parlay","Parlay / Acca"],["builder","Bet builder"]].map(([v,t])=>
+          `<button class="${d.type===v?'on':''}" data-type="${v}">${t}</button>`).join("")}
+      </div>
+    </div>
+
+    <div class="field"><label>${d.type==="single"?"Selection":"Legs"}</label>
+      <div id="legs">
+        ${d.legs.map((l,i)=>legRow(l,i)).join("")}
+      </div>
+      ${d.type!=="single"?`<button class="minibtn" id="addLeg" style="margin-top:4px">+ Add leg</button>`:""}
+    </div>
+
+    ${d.type!=="single"?`
+    <div class="field">
+      <label>Combined odds — auto ${fmtOdds(combined)}. Override if your bookie's printed parlay price differs:</label>
+      <input class="input mono" id="manualOdds" placeholder="auto (${fmtOdds(combined)})"
+        value="${d.manualOdds??""}"></div>`:""}
+
+    <div class="row3">
+      <div class="field"><label>Stake (${cur()})</label>
+        <input class="input mono" id="stake" type="number" value="${d.stake??""}"></div>
+      <div class="field"><label>Date</label>
+        <input class="input" id="date" type="date" value="${d.date||""}"></div>
+      <div class="field"><label>Status</label>
+        <select class="input" id="status">
+          ${[["pending","Pending"],["won","Won"],["lost","Lost"],["half-won","Half won"],["half-lost","Half lost"],["void","Void"],["push","Push"]]
+            .map(([v,t])=>`<option value="${v}" ${d.status===v?"selected":""}>${t}</option>`).join("")}
+        </select></div>
+    </div>
+
+    <div class="row3">
+      <div class="field"><label>Sport / league</label>
+        <input class="input" id="sport" value="${esc(d.sport||"")}" placeholder="e.g. CS2, NBA"></div>
+      <div class="field"><label>Bookmaker</label>
+        <input class="input" id="book" value="${esc(d.book||"")}" placeholder="e.g. Bet365"></div>
+      <div class="field"><label>Tags (comma sep)</label>
+        <input class="input" id="tags" value="${esc((d.tags||[]).join(", "))}" placeholder="value, live"></div>
+    </div>
+
+    <div class="field"><label>Note</label>
+      <textarea class="input" id="note" rows="2" placeholder="Why you took this bet…">${esc(d.note||"")}</textarea></div>
+
+    <!-- staking engine -->
+    <div class="field">
+      <label>Stake suggester — your estimated true win % vs the line</label>
+      <div class="row2">
+        <input class="input mono" id="trueProb" placeholder="Your win % e.g. 55"
+          value="${d.trueOdds? (impliedProb(d.trueOdds)*100).toFixed(1):""}">
+        <button class="suggestbtn" id="suggestBtn">⚡ Suggest stake</button>
+      </div>
+      <div class="stakebox" id="stakeOut" style="display:none"></div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn primary" id="saveBet" style="flex:1">${editing?"Save changes":"Add bet"}</button>
+      ${editing?`<button class="btn danger" id="delBet">Delete</button>`:""}
+      <button class="btn ghost" id="cancelBet">Cancel</button>
+    </div>`;
+
+  wireModal();
+}
+
+function legRow(l,i){
+  return `<div class="legrow" data-i="${i}">
+    <input class="input legSel" placeholder="Selection (team / market)" value="${esc(l.sel||"")}">
+    <input class="input mono legOdds" placeholder="${settings.oddsFormat==='dec'?'1.91':'-110'}" value="${legOddsDisplay(l.odds)}">
+    ${draft.legs.length>1?`<button class="delleg" data-del="${i}">×</button>`:`<span></span>`}
+  </div>`;
+}
+function legOddsDisplay(o){ if(!o) return ""; return settings.oddsFormat==="dec"? o : decToAmerican(o); }
+function parseOddsInput(v){
+  v=(v||"").trim(); if(!v) return null;
+  if(settings.oddsFormat==="am") return americanToDec(v);
+  return parseFloat(v)||null;
+}
+
+function syncDraftFromForm(){
+  const d=draft;
+  d.legs=[...document.querySelectorAll(".legrow")].map(r=>({
+    sel:r.querySelector(".legSel").value.trim(),
+    odds:parseOddsInput(r.querySelector(".legOdds").value)
+  }));
+  d.stake=parseFloat($("#stake")?.value)||0;
+  d.date=$("#date")?.value||"";
+  d.status=$("#status")?.value||"pending";
+  d.sport=$("#sport")?.value.trim()||"";
+  d.book=$("#book")?.value.trim()||"";
+  d.tags=($("#tags")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
+  d.note=$("#note")?.value.trim()||"";
+  const mo=$("#manualOdds"); d.manualOdds = mo&&mo.value.trim()? parseOddsInput(mo.value):null;
+}
+
+function wireModal(){
+  document.querySelectorAll("#typeSeg button").forEach(b=>b.onclick=()=>{
+    syncDraftFromForm();
+    draft.type=b.dataset.type;
+    if(draft.type==="single" && draft.legs.length>1) draft.legs=[draft.legs[0]];
+    if(draft.type!=="single" && draft.legs.length<2) draft.legs.push({sel:"",odds:null});
+    drawModal();
+  });
+  const addLeg=$("#addLeg"); if(addLeg) addLeg.onclick=()=>{ syncDraftFromForm(); draft.legs.push({sel:"",odds:null}); drawModal(); };
+  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ syncDraftFromForm(); draft.legs.splice(+b.dataset.del,1); drawModal(); });
+
+  $("#suggestBtn").onclick=()=>{
+    syncDraftFromForm();
+    const bookie=betDecOdds(draft);
+    const probInput=parseFloat($("#trueProb").value);
+    const out=$("#stakeOut");
+    if(!bookie||!probInput){ out.style.display="block"; out.innerHTML=`<span class="muted">Enter the bet's odds and your estimated win % first.</span>`; return; }
+    const trueDec=100/probInput;             // prob% -> decimal
+    draft.trueOdds=trueDec;
+    const r=kellyStake(bookie, trueDec, settings.bankroll, settings.kellyFraction);
+    out.style.display="block";
+    if(r.edgePct<=0){
+      out.innerHTML=`<div class="big neg">No bet</div>
+        <div class="edge neg">Negative edge (${r.edgePct.toFixed(1)}% EV). The line doesn't beat your estimate — Kelly says skip it.</div>`;
+    } else {
+      const units=settings.defaultUnit? (r.stake/settings.defaultUnit):0;
+      out.innerHTML=`<div class="big">${money(r.stake)}</div>
+        <div class="edge pos">+${r.edgePct.toFixed(1)}% edge · ${(settings.kellyFraction*100)}% Kelly · ≈ ${units.toFixed(1)} units</div>
+        <div class="muted" style="font-size:12px;margin-top:4px">Full Kelly would be ${money(r.kelly*settings.bankroll)} — we apply your ${settings.kellyFraction}× fraction to reduce variance.</div>
+        <button class="minibtn" id="useStake" style="margin-top:8px">Use this stake →</button>`;
+      $("#useStake").onclick=()=>{ $("#stake").value=r.stake.toFixed(2); draft.stake=r.stake; toast("Stake set to "+money(r.stake)); };
+    }
+  };
+
+  $("#saveBet").onclick=()=>{
+    syncDraftFromForm();
+    if(!draft.legs.some(l=>l.sel||l.odds)){ toast("Add at least one selection"); return; }
+    const i=bets.findIndex(b=>b.id===draft.id);
+    if(i>=0) bets[i]=draft; else bets.unshift(draft);
+    save(); closeModal(); renderAll(); toast(i>=0?"Bet updated":"Bet added");
+  };
+  const del=$("#delBet"); if(del) del.onclick=()=>{ bets=bets.filter(b=>b.id!==draft.id); save(); closeModal(); renderAll(); toast("Bet deleted"); };
+  $("#cancelBet").onclick=closeModal;
+}
+
+// ---------- quick actions ----------
+function settle(id,status){ const b=bets.find(x=>x.id===id); if(b){b.status=status; save(); renderAll(); toast("Marked "+status);} }
+function shareBet(id){
+  const b=bets.find(x=>x.id===id); if(!b) return;
+  const odds=fmtOdds(betDecOdds(b));
+  const txt=`${b.legs.map(l=>l.sel+" @ "+fmtOdds(l.odds)).join(" + ")} | ${money(b.stake)} @ ${odds} → ${money(b.stake*betDecOdds(b))} [${b.status}]`;
+  navigator.clipboard?.writeText(txt).then(()=>toast("Bet copied to clipboard"),()=>toast(txt));
+}
+
+// ---------- data io ----------
+function exportJSON(){
+  download("ledger-bets-"+today()+".json", JSON.stringify({version:1,exported:new Date().toISOString(),settings,bets},null,2),"application/json");
+}
+function exportCSV(){
+  const head=["date","type","selection","odds","stake","status","profit","sport","book","tags","note"];
+  const rows=bets.map(b=>[b.date,b.type,b.legs.map(l=>l.sel).join(" + "),betDecOdds(b).toFixed(2),
+    b.stake,b.status,settledProfit(b).toFixed(2),b.sport,b.book,(b.tags||[]).join(" "),(b.note||"").replace(/\n/g," ")]);
+  const csv=[head,...rows].map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(",")).join("\n");
+  download("ledger-bets-"+today()+".csv",csv,"text/csv");
+}
+function importJSON(e){
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{
+    const d=JSON.parse(r.result);
+    if(Array.isArray(d.bets)){ bets=d.bets; if(d.settings) settings={...settings,...d.settings}; }
+    else if(Array.isArray(d)){ bets=d; }
+    else throw 0;
+    save(); applyTheme(); renderAll(); syncTopBtns(); toast("Imported "+bets.length+" bets");
+  }catch{ toast("Couldn't read that file"); } };
+  r.readAsText(f); e.target.value="";
+}
+function wipe(){ if(confirm("Delete ALL bets? This cannot be undone (export first!).")){ bets=[]; save(); renderAll(); toast("All bets deleted"); } }
+
+function download(name,content,type){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([content],{type}));
+  a.download=name; a.click(); URL.revokeObjectURL(a.href);
+}
+function today(){ return new Date().toISOString().slice(0,10); }
+
+// ---------- helpers ----------
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),1900); }
+function applyTheme(){ document.body.dataset.theme=settings.theme; }
+function syncTopBtns(){ $("#oddsFmtBtn").textContent=settings.oddsFormat==="dec"?"DEC":"US"; }
+
+// ---------- tabs / top bar ----------
+document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav.tabs button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");
+  activeTab=b.dataset.tab;
+  ["dash","bets","analytics","data"].forEach(t=>$("#tab-"+t).hidden=(t!==activeTab));
+});
+$("#addBtn").onclick=()=>openModal();
+$("#themeBtn").onclick=()=>{ settings.theme=settings.theme==="dark"?"light":"dark"; applyTheme(); save(); };
+$("#oddsFmtBtn").onclick=()=>{ settings.oddsFormat=settings.oddsFormat==="dec"?"am":"dec"; save(); syncTopBtns(); renderAll(); };
+$("#scrim").onclick=e=>{ if(e.target.id==="scrim") closeModal(); };
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
+
+// ---------- boot ----------
+applyTheme(); syncTopBtns(); renderAll();
+
+// seed a couple of demo bets on very first run so the app isn't empty
+if(!bets.length && !localStorage.getItem("ledger.seeded")){
+  localStorage.setItem("ledger.seeded","1");
+  bets=[
+    {id:uid(),created:Date.now()-3e5,type:"single",legs:[{sel:"NaVi to win vs FaZe",odds:1.85}],stake:25,status:"won",date:today(),sport:"CS2",book:"Bet365",tags:["value"],note:"NaVi strong on Mirage",manualOdds:null,trueOdds:1.72},
+    {id:uid(),created:Date.now()-2e5,type:"parlay",legs:[{sel:"T1 to win",odds:1.5},{sel:"Over 2.5 maps",odds:1.8}],stake:10,status:"lost",date:today(),sport:"LoL",book:"Pinnacle",tags:["acca"],note:"",manualOdds:null,trueOdds:null},
+    {id:uid(),created:Date.now()-1e5,type:"single",legs:[{sel:"Lakers -4.5",odds:1.91}],stake:20,status:"pending",date:today(),sport:"NBA",book:"DraftKings",tags:[],note:"",manualOdds:null,trueOdds:null}
+  ];
+  save(); renderAll();
+}
+</script>
+</body>
+</html>
