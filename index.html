@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ledger — bet tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --ink:#0d0f12;
@@ -165,6 +166,18 @@ nav.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
 
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--line);padding:11px 18px;border-radius:10px;font-size:14px;z-index:99;opacity:0;transition:.25s;pointer-events:none}
 .toast.show{opacity:1}
+.syncdot{width:9px;height:9px;border-radius:50%;background:var(--void);transition:.3s;flex-shrink:0}
+.syncdot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.syncdot.busy{background:var(--amber);animation:pulse 1s infinite}
+.syncdot.off{background:var(--void)}
+@keyframes pulse{50%{opacity:.4}}
+.authwrap{max-width:380px;margin:60px auto;text-align:center}
+.authwrap .e-mark{font-size:44px;margin-bottom:10px}
+.authwrap h2{font-size:22px;font-weight:800;margin-bottom:6px}
+.authwrap p{color:var(--muted);font-size:14px;margin-bottom:22px}
+.authwrap .input{text-align:left;margin-bottom:10px}
+.authtoggle{margin-top:14px;font-size:13px;color:var(--muted)}
+.authtoggle b{color:var(--accent);cursor:pointer}
 
 footer{text-align:center;color:var(--muted);font-size:12px;padding:30px 0 40px}
 
@@ -182,8 +195,10 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:30px 0 40px}
 
 <header class="top">
   <div class="brand"><b>Ledger<span class="dot">.</span></b><span>bet tracker</span></div>
+  <span id="syncDot" class="syncdot" title="Sync status"></span>
   <button class="iconbtn" id="oddsFmtBtn" title="Toggle odds format">DEC</button>
   <button class="iconbtn" id="themeBtn" title="Toggle theme">◐</button>
+  <button class="iconbtn" id="acctBtn" title="Account">☁</button>
   <button class="btn primary" id="addBtn">+ New bet</button>
 </header>
 
@@ -232,6 +247,70 @@ let filter = {status:"all", type:"all", sport:"", q:""};
 function load(k,fb){ try{ const v=JSON.parse(localStorage.getItem(k)); return v??fb; }catch{ return fb; } }
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(bets)); localStorage.setItem(LS_SET, JSON.stringify(settings)); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+// ============================================================
+//  CLOUD SYNC (Supabase)
+// ============================================================
+const SUPA_URL = "https://xetdtxhbceexqbnfevyb.supabase.co";
+const SUPA_KEY = "sb_publishable_hcj1-kFud8jWOynyxqk9xQ_wPPQJncp";
+let sb = null, user = null, syncing = false;
+
+function initSupa(){
+  try{ sb = supabase.createClient(SUPA_URL, SUPA_KEY); return true; }
+  catch(e){ console.warn("Supabase init failed",e); return false; }
+}
+
+function setDot(state){ // 'on' | 'busy' | 'off'
+  const d=$("#syncDot"); if(!d) return;
+  d.className="syncdot "+state;
+  d.title = state==="on"?"Synced to cloud" : state==="busy"?"Syncing…" : "Offline — local only";
+}
+
+async function refreshUser(){
+  if(!sb) return null;
+  const {data}=await sb.auth.getUser();
+  user = data?.user || null;
+  return user;
+}
+
+// pull all rows from cloud, replace local
+async function pullFromCloud(){
+  if(!sb||!user) return;
+  setDot("busy"); syncing=true;
+  try{
+    const {data,error}=await sb.from("bets").select("id,data,updated_at");
+    if(error) throw error;
+    bets = (data||[]).map(r=>({...r.data, id:r.id, _updated:r.updated_at}));
+    localStorage.setItem(LS_KEY, JSON.stringify(bets));
+    setDot("on"); renderAll();
+  }catch(e){ console.warn("pull failed",e); setDot("off"); toast("Sync error — working offline"); }
+  finally{ syncing=false; }
+}
+
+// push one bet (upsert)
+async function pushBet(b){
+  if(!sb||!user) return;
+  setDot("busy");
+  try{
+    const {error}=await sb.from("bets").upsert({ id:b.id, user_id:user.id, data:b, updated_at:new Date().toISOString() });
+    if(error) throw error;
+    setDot("on");
+  }catch(e){ console.warn("push failed",e); setDot("off"); }
+}
+async function deleteCloud(id){
+  if(!sb||!user) return;
+  try{ await sb.from("bets").delete().eq("id",id); }catch(e){ console.warn("cloud delete failed",e); }
+}
+// push everything (used after import / first login merge)
+async function pushAll(){
+  if(!sb||!user) return;
+  setDot("busy");
+  try{
+    const rows=bets.map(b=>({id:b.id,user_id:user.id,data:b,updated_at:new Date().toISOString()}));
+    if(rows.length){ const {error}=await sb.from("bets").upsert(rows); if(error) throw error; }
+    setDot("on");
+  }catch(e){ console.warn("pushAll failed",e); setDot("off"); }
+}
 
 // ---------- odds math ----------
 function decToAmerican(d){ if(!d||d<=1) return "—"; return d>=2 ? "+"+Math.round((d-1)*100) : "-"+Math.round(100/(d-1)); }
@@ -675,14 +754,14 @@ function wireModal(){
     if(!draft.legs.some(l=>l.sel||l.odds)){ toast("Add at least one selection"); return; }
     const i=bets.findIndex(b=>b.id===draft.id);
     if(i>=0) bets[i]=draft; else bets.unshift(draft);
-    save(); closeModal(); renderAll(); toast(i>=0?"Bet updated":"Bet added");
+    save(); pushBet(draft); closeModal(); renderAll(); toast(i>=0?"Bet updated":"Bet added");
   };
-  const del=$("#delBet"); if(del) del.onclick=()=>{ bets=bets.filter(b=>b.id!==draft.id); save(); closeModal(); renderAll(); toast("Bet deleted"); };
+  const del=$("#delBet"); if(del) del.onclick=()=>{ deleteCloud(draft.id); bets=bets.filter(b=>b.id!==draft.id); save(); closeModal(); renderAll(); toast("Bet deleted"); };
   $("#cancelBet").onclick=closeModal;
 }
 
 // ---------- quick actions ----------
-function settle(id,status){ const b=bets.find(x=>x.id===id); if(b){b.status=status; save(); renderAll(); toast("Marked "+status);} }
+function settle(id,status){ const b=bets.find(x=>x.id===id); if(b){b.status=status; save(); pushBet(b); renderAll(); toast("Marked "+status);} }
 function shareBet(id){
   const b=bets.find(x=>x.id===id); if(!b) return;
   const odds=fmtOdds(betDecOdds(b));
@@ -709,11 +788,11 @@ function importJSON(e){
     if(Array.isArray(d.bets)){ bets=d.bets; if(d.settings) settings={...settings,...d.settings}; }
     else if(Array.isArray(d)){ bets=d; }
     else throw 0;
-    save(); applyTheme(); renderAll(); syncTopBtns(); toast("Imported "+bets.length+" bets");
+    save(); applyTheme(); renderAll(); syncTopBtns(); pushAll(); toast("Imported "+bets.length+" bets");
   }catch{ toast("Couldn't read that file"); } };
   r.readAsText(f); e.target.value="";
 }
-function wipe(){ if(confirm("Delete ALL bets? This cannot be undone (export first!).")){ bets=[]; save(); renderAll(); toast("All bets deleted"); } }
+function wipe(){ if(confirm("Delete ALL bets? This cannot be undone (export first!).")){ if(sb&&user){ sb.from("bets").delete().neq("id","___none___"); } bets=[]; save(); renderAll(); toast("All bets deleted"); } }
 
 function download(name,content,type){
   const a=document.createElement("a");
@@ -736,13 +815,87 @@ document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>{
   ["dash","bets","analytics","data"].forEach(t=>$("#tab-"+t).hidden=(t!==activeTab));
 });
 $("#addBtn").onclick=()=>openModal();
+$("#acctBtn").onclick=()=>openAuth();
 $("#themeBtn").onclick=()=>{ settings.theme=settings.theme==="dark"?"light":"dark"; applyTheme(); save(); };
 $("#oddsFmtBtn").onclick=()=>{ settings.oddsFormat=settings.oddsFormat==="dec"?"am":"dec"; save(); syncTopBtns(); renderAll(); };
 $("#scrim").onclick=e=>{ if(e.target.id==="scrim") closeModal(); };
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
 
+// ============================================================
+//  AUTH UI
+// ============================================================
+let authMode="login";
+
+function openAuth(){
+  const m=$("#modal");
+  if(user){
+    m.innerHTML=`
+      <h2>Account</h2>
+      <div class="sub">Signed in as <b>${esc(user.email)}</b></div>
+      <p class="muted" style="font-size:14px;margin-bottom:16px">Your bets sync automatically to the cloud and appear on every device you log in from.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="syncNow">↻ Sync now</button>
+        <button class="btn danger" id="signOut">Sign out</button>
+        <button class="btn ghost" id="closeAuth">Close</button>
+      </div>`;
+    $("#scrim").classList.add("open");
+    $("#syncNow").onclick=()=>{ pullFromCloud(); toast("Syncing…"); };
+    $("#signOut").onclick=async()=>{ await sb.auth.signOut(); user=null; setDot("off"); closeModal(); toast("Signed out"); };
+    $("#closeAuth").onclick=closeModal;
+    return;
+  }
+  m.innerHTML=`
+    <div class="authwrap">
+      <div class="e-mark">☁</div>
+      <h2>${authMode==="login"?"Log in":"Create account"}</h2>
+      <p>${authMode==="login"?"Access your bets from any device.":"Sign up to sync your bets across all your devices."}</p>
+      <input class="input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
+      <input class="input" id="authPass" type="password" placeholder="Password (min 6 chars)" autocomplete="${authMode==="login"?"current-password":"new-password"}">
+      <button class="btn primary" id="authGo" style="width:100%;margin-top:6px">${authMode==="login"?"Log in":"Sign up"}</button>
+      <div class="authtoggle">
+        ${authMode==="login"?"No account yet? <b id='toAuth'>Sign up</b>":"Already have one? <b id='toAuth'>Log in</b>"}
+      </div>
+      <div class="authtoggle"><b id="closeAuth" style="color:var(--muted)">Skip — use offline</b></div>
+    </div>`;
+  $("#scrim").classList.add("open");
+  $("#toAuth").onclick=()=>{ authMode=authMode==="login"?"signup":"login"; openAuth(); };
+  $("#closeAuth").onclick=closeModal;
+  $("#authGo").onclick=doAuth;
+  $("#authPass").onkeydown=e=>{ if(e.key==="Enter") doAuth(); };
+}
+
+async function doAuth(){
+  const email=$("#authEmail").value.trim();
+  const pass=$("#authPass").value;
+  if(!email||pass.length<6){ toast("Enter email and a 6+ char password"); return; }
+  const g=$("#authGo"); g.textContent="…"; g.disabled=true;
+  try{
+    let res;
+    if(authMode==="signup") res=await sb.auth.signUp({email,password:pass});
+    else res=await sb.auth.signInWithPassword({email,password:pass});
+    if(res.error) throw res.error;
+    user=res.data.user;
+    if(!user){ toast("Check your email to confirm, then log in"); closeModal(); return; }
+    closeModal(); toast("Signed in");
+    if(bets.length) await pushAll();   // push existing local bets up
+    await pullFromCloud();             // then load unified set
+  }catch(e){
+    toast(e.message||"Auth failed");
+    const b=$("#authGo"); if(b){ b.textContent=authMode==="login"?"Log in":"Sign up"; b.disabled=false; }
+  }
+}
+
 // ---------- boot ----------
 applyTheme(); syncTopBtns(); renderAll();
+
+// connect to cloud, restore session if any
+(async()=>{
+  if(initSupa()){
+    await refreshUser();
+    if(user){ setDot("on"); await pullFromCloud(); }
+    else setDot("off");
+  } else setDot("off");
+})();
 
 // seed a couple of demo bets on very first run so the app isn't empty
 if(!bets.length && !localStorage.getItem("ledger.seeded")){
