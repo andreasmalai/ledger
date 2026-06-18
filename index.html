@@ -134,9 +134,32 @@ nav.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
 .seg{display:flex;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
 .seg button{flex:1;padding:9px 8px;font-size:13px;font-weight:600;color:var(--muted)}
 .seg button.on{background:var(--panel-2);color:var(--text)}
-.legrow{display:grid;grid-template-columns:1fr 90px 34px;gap:8px;margin-bottom:8px;align-items:center}
-.legrow .input{margin:0}
-.delleg{width:34px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--red);font-size:18px}
+.legcard{background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:11px;margin-bottom:9px}
+.legcard .input{margin:0 0 8px}
+.legcard .input:last-child{margin-bottom:0}
+.legcard-head{display:flex;align-items:center;margin-bottom:8px}
+.legnum{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);font-weight:700}
+.legtrio{display:grid;grid-template-columns:1fr 1fr 78px;gap:8px}
+.legtrio .input{margin:0}
+.delleg{margin-left:auto;width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--red);font-size:17px;line-height:1}
+.leg-pick{display:flex;flex-direction:column;gap:1px}
+.leg-sub{font-size:11px;color:var(--void)}
+.stakedetails{border:1px solid var(--line);border-radius:11px;padding:0;margin-top:4px;background:var(--panel)}
+.stakedetails summary{padding:12px 14px;cursor:pointer;font-weight:600;font-size:14px;color:var(--text);list-style:none}
+.stakedetails summary::-webkit-details-marker{display:none}
+.stakedetails[open] summary{border-bottom:1px solid var(--line)}
+.stakedetails>*:not(summary){margin:12px 14px}
+.stakehelp{font-size:13px;color:var(--muted);line-height:1.55}
+.stakehelp b{color:var(--text)}
+.pastebox{border:1px solid var(--accent);border-radius:11px;margin-bottom:14px;background:var(--panel)}
+.pastebox summary{padding:11px 14px;cursor:pointer;font-weight:700;font-size:14px;color:var(--accent);list-style:none}
+.pastebox summary::-webkit-details-marker{display:none}
+.pastebox[open] summary{border-bottom:1px solid var(--line)}
+.pastebox>*:not(summary){margin:11px 14px}
+.pastehelp{font-size:12.5px;color:var(--muted);line-height:1.5}
+.sliptype{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:9px}
+.sliptype>span{font-size:13px;color:var(--text);width:100%;margin-bottom:2px}
+.sliptype .chip{font-size:12px;padding:5px 11px}
 
 /* ---- staking box ---- */
 .stakebox{background:var(--panel-2);border:1px dashed var(--void);border-radius:12px;padding:14px;margin-top:6px}
@@ -186,7 +209,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:30px 0 40px}
   .row3{grid-template-columns:1fr}
   .stat .val{font-size:23px}
   .brand span{display:none}
-  .legrow{grid-template-columns:1fr 80px 30px}
+  .legtrio{grid-template-columns:1fr 1fr 64px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -454,8 +477,12 @@ function betCard(b){
       </div>
     </div>
     <div class="legs">
-      ${b.legs.map(l=>`<div class="leg"><span>${esc(l.sel||"—")}</span>
-        <span class="lg-odds">${fmtOdds(l.odds)}</span></div>`).join("")}
+      ${b.legs.map(l=>{
+        const pick = l.pick || l.sel || "—";
+        const sub = [l.market, l.match].filter(Boolean).join(" · ");
+        return `<div class="leg"><span class="leg-pick">${esc(pick)}${sub?` <span class="leg-sub">${esc(sub)}</span>`:""}</span>
+          <span class="lg-odds">${fmtOdds(l.odds)}</span></div>`;
+      }).join("")}
     </div>
     <div class="meta">
       <span>Stake <b>${money(b.stake||0)}</b></span>
@@ -602,9 +629,10 @@ function renderAll(){ renderDash(); renderBets(); renderAnalytics(); renderData(
 let draft=null;
 
 function openModal(id){
+  pendingSingles=null;
   draft = id ? structuredClone(bets.find(b=>b.id===id))
              : { id:uid(), created:Date.now(), type:"single",
-                 legs:[{sel:"",odds:null}], stake:settings.defaultUnit,
+                 legs:[{match:"",market:"",pick:"",odds:null,sel:""}], stake:settings.defaultUnit,
                  status:"pending", date:new Date().toISOString().slice(0,10),
                  sport:"", book:"", tags:[], note:"", manualOdds:null,
                  trueOdds:null };
@@ -619,7 +647,16 @@ function drawModal(){
   const combined=betDecOdds(d);
   $("#modal").innerHTML=`
     <h2>${editing?"Edit bet":"New bet"}</h2>
-    <div class="sub">Singles, parlays, and bet builders. Enter the odds your bookie shows.</div>
+    <div class="sub">Match → market → your pick → the odds your bookie shows.</div>
+
+    ${!editing?`
+    <details class="pastebox">
+      <summary>📋 Paste from a bet slip</summary>
+      <div class="pastehelp">Copy your slip from the bookie and paste it here — Ledger fills the legs in for you to review.</div>
+      <textarea class="input" id="pasteArea" rows="4" placeholder="Turcia2.12&#10;Rezultat Final 1X2&#10;Turcia vs. Paraguay&#10;6:00 20.06.2026"></textarea>
+      <button class="suggestbtn" id="parseBtn" style="margin-top:8px">⬇ Read slip</button>
+      <div id="parseMsg" class="pastehelp" style="margin-top:6px"></div>
+    </details>`:""}
 
     <div class="field"><label>Bet type</label>
       <div class="seg" id="typeSeg">
@@ -628,7 +665,7 @@ function drawModal(){
       </div>
     </div>
 
-    <div class="field"><label>${d.type==="single"?"Selection":"Legs"}</label>
+    <div class="field"><label>${d.type==="single"?"Your selection":"Legs — each pick is one leg"}</label>
       <div id="legs">
         ${d.legs.map((l,i)=>legRow(l,i)).join("")}
       </div>
@@ -665,16 +702,22 @@ function drawModal(){
     <div class="field"><label>Note</label>
       <textarea class="input" id="note" rows="2" placeholder="Why you took this bet…">${esc(d.note||"")}</textarea></div>
 
-    <!-- staking engine -->
-    <div class="field">
-      <label>Stake suggester — your estimated true win % vs the line</label>
-      <div class="row2">
-        <input class="input mono" id="trueProb" placeholder="Your win % e.g. 55"
-          value="${d.trueOdds? (impliedProb(d.trueOdds)*100).toFixed(1):""}">
-        <button class="suggestbtn" id="suggestBtn">⚡ Suggest stake</button>
+    <!-- staking engine (optional) -->
+    <details class="stakedetails" ${d.trueOdds?"open":""}>
+      <summary>⚡ Optional: suggest a stake for me</summary>
+      <div class="stakehelp">
+        Enter how likely <i>you</i> think your pick is to win, as a %. Not sure? Tap
+        <b>“use bookie's”</b> to start from what the odds imply, then nudge it up if you think it's more likely.
+        Leave this closed and just type a stake above if you'd rather keep it simple.
       </div>
+      <div class="row2">
+        <input class="input mono" id="trueProb" placeholder="Your win % — e.g. 55"
+          value="${d.trueOdds? (impliedProb(d.trueOdds)*100).toFixed(1):""}">
+        <button class="minibtn" id="impliedBtn" type="button">use bookie's %</button>
+      </div>
+      <button class="suggestbtn" id="suggestBtn" style="margin-top:8px">⚡ Suggest stake</button>
       <div class="stakebox" id="stakeOut" style="display:none"></div>
-    </div>
+    </details>
 
     <div style="display:flex;gap:10px;margin-top:18px">
       <button class="btn primary" id="saveBet" style="flex:1">${editing?"Save changes":"Add bet"}</button>
@@ -686,10 +729,14 @@ function drawModal(){
 }
 
 function legRow(l,i){
-  return `<div class="legrow" data-i="${i}">
-    <input class="input legSel" placeholder="Selection (team / market)" value="${esc(l.sel||"")}">
-    <input class="input mono legOdds" placeholder="${settings.oddsFormat==='dec'?'1.91':'-110'}" value="${legOddsDisplay(l.odds)}">
-    ${draft.legs.length>1?`<button class="delleg" data-del="${i}">×</button>`:`<span></span>`}
+  return `<div class="legcard" data-i="${i}">
+    ${draft.legs.length>1?`<div class="legcard-head"><span class="legnum">Leg ${i+1}</span><button class="delleg" data-del="${i}">×</button></div>`:""}
+    <input class="input legMatch" placeholder="Match — e.g. SUA vs Australia" value="${esc(l.match||"")}">
+    <div class="legtrio">
+      <input class="input legMarket" placeholder="Market — e.g. Total Goals 2.5" value="${esc(l.market||"")}">
+      <input class="input legPick" placeholder="Pick — e.g. Over 2.5" value="${esc(l.pick||"")}">
+      <input class="input mono legOdds" placeholder="${settings.oddsFormat==='dec'?'2.00':'-110'}" value="${legOddsDisplay(l.odds)}">
+    </div>
   </div>`;
 }
 function legOddsDisplay(o){ if(!o) return ""; return settings.oddsFormat==="dec"? o : decToAmerican(o); }
@@ -699,12 +746,107 @@ function parseOddsInput(v){
   return parseFloat(v)||null;
 }
 
+// ---- bet-slip parser ----
+// splits a line like "Peste 2.51.92" into pick "Peste 2.5" + odds 1.92
+function splitPickOdds(raw){
+  const l1=(raw||"").trim();
+  let m = l1.match(/(\d{1,2}\.\d{2})$/);   // trailing D.DD / DD.DD
+  if(m){
+    let odds=m[1];
+    let pickPart=l1.slice(0, l1.length-odds.length);
+    if(/\.$/.test(pickPart)){             // a digit was stolen (e.g. "2.5"+"1.92")
+      pickPart=pickPart+odds[0];
+      odds=odds.slice(1);
+    }
+    const o=parseFloat(odds);
+    if(o&&o>=1&&o<1000) return {pick:pickPart.trim(), odds:o};
+  }
+  m = l1.match(/^(.*?)(\d+\.\d+|\d+)$/);   // fallback: any trailing number
+  if(m) return {pick:m[1].trim(), odds:parseFloat(m[2])};
+  return {pick:l1, odds:null};
+}
+
+// Expects repeating 4-line blocks:
+//   line1: pick + trailing decimal odds  (e.g. "Turcia2.12", "Peste 2.51.92", "DA2.22")
+//   line2: market                        (e.g. "Rezultat Final 1X2")
+//   line3: match "A vs. B"               (e.g. "Turcia vs. Paraguay")
+//   line4: time + date                   (e.g. "6:00 20.06.2026")
+function parseSlip(raw){
+  const lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const legs=[];
+  let warnings=0;
+  // walk in groups; tolerate a missing time line by detecting the "vs" line
+  for(let i=0;i<lines.length;){
+    const l1=lines[i]||"";
+    // pull trailing decimal odds off line 1, handling glued numbers like "Peste 2.51.92"
+    const {pick, odds} = splitPickOdds(l1);
+    if(odds===null) warnings++;
+    // line 2 = market, line 3 = match, line 4 = datetime (datetime optional)
+    const market=lines[i+1]||"";
+    const matchLine=lines[i+2]||"";
+    let match=matchLine, when="";
+    // is the 3rd line actually a match? (contains "vs")
+    const hasVs=/(\bvs\.?\b|\bv\.?\b| - )/i.test(matchLine);
+    if(!hasVs){ // structure off — treat line2 as match maybe; flag for review
+      warnings++;
+    }
+    // 4th line: datetime if it looks like one
+    const dt=lines[i+3]||"";
+    const isDate=/\d{1,2}[:.]\d{2}|\d{1,2}\.\d{1,2}\.\d{2,4}/.test(dt);
+    if(isDate) when=dt;
+    legs.push({
+      match: match.replace(/\s*vs\.?\s*/i," vs ").trim(),
+      market: market.trim(),
+      pick: pick.trim(),
+      odds,
+      when,
+      sel:[pick.trim(), market && "("+market.trim()+")", match && "· "+match.trim()].filter(Boolean).join(" ")
+    });
+    i += isDate?4:3;   // advance past this block
+  }
+  return {legs, warnings};
+}
+
+// when a multi-pick slip is pasted, let the user say what kind of bet it is
+let pendingSingles=null;
+function askSlipType(n){
+  const m=$("#parseMsg");
+  if(!m) return;
+  m.innerHTML += `<div class="sliptype">
+    <span>${n} picks — what kind of bet?</span>
+    <button class="chip on" data-slip="parlay">Parlay</button>
+    <button class="chip" data-slip="builder">Bet builder</button>
+    <button class="chip" data-slip="singles">${n} singles</button>
+  </div>`;
+  m.querySelectorAll("[data-slip]").forEach(b=>b.onclick=()=>{
+    const kind=b.dataset.slip;
+    if(kind==="singles"){
+      // split into separate single bets, save them all at once
+      pendingSingles = draft.legs.slice();
+      toast(`Will save ${pendingSingles.length} separate singles on "Add bet"`);
+      m.querySelectorAll("[data-slip]").forEach(x=>x.classList.toggle("on",x===b));
+    } else {
+      pendingSingles=null;
+      draft.type=kind;
+      m.querySelectorAll("[data-slip]").forEach(x=>x.classList.toggle("on",x===b));
+      drawModal();
+      // re-show the message after redraw
+      const m2=$("#parseMsg"); if(m2) m2.innerHTML=`✓ Set as ${kind==="parlay"?"a parlay":"a bet builder"}. Review and save.`;
+    }
+  });
+}
+
 function syncDraftFromForm(){
   const d=draft;
-  d.legs=[...document.querySelectorAll(".legrow")].map(r=>({
-    sel:r.querySelector(".legSel").value.trim(),
-    odds:parseOddsInput(r.querySelector(".legOdds").value)
-  }));
+  d.legs=[...document.querySelectorAll(".legcard")].map(r=>{
+    const match=r.querySelector(".legMatch").value.trim();
+    const market=r.querySelector(".legMarket").value.trim();
+    const pick=r.querySelector(".legPick").value.trim();
+    const odds=parseOddsInput(r.querySelector(".legOdds").value);
+    // human-readable summary used across the app
+    const sel=[pick, market && "("+market+")", match && "· "+match].filter(Boolean).join(" ");
+    return {match,market,pick,odds,sel};
+  });
   d.stake=parseFloat($("#stake")?.value)||0;
   d.date=$("#date")?.value||"";
   d.status=$("#status")?.value||"pending";
@@ -720,11 +862,43 @@ function wireModal(){
     syncDraftFromForm();
     draft.type=b.dataset.type;
     if(draft.type==="single" && draft.legs.length>1) draft.legs=[draft.legs[0]];
-    if(draft.type!=="single" && draft.legs.length<2) draft.legs.push({sel:"",odds:null});
+    if(draft.type!=="single" && draft.legs.length<2) draft.legs.push({match:"",market:"",pick:"",odds:null,sel:""});
     drawModal();
   });
-  const addLeg=$("#addLeg"); if(addLeg) addLeg.onclick=()=>{ syncDraftFromForm(); draft.legs.push({sel:"",odds:null}); drawModal(); };
+  const addLeg=$("#addLeg"); if(addLeg) addLeg.onclick=()=>{ syncDraftFromForm(); draft.legs.push({match:"",market:"",pick:"",odds:null,sel:""}); drawModal(); };
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ syncDraftFromForm(); draft.legs.splice(+b.dataset.del,1); drawModal(); });
+
+  const parseBtn=$("#parseBtn");
+  if(parseBtn) parseBtn.onclick=()=>{
+    const raw=$("#pasteArea").value;
+    if(!raw.trim()){ $("#parseMsg").textContent="Paste your slip text first."; return; }
+    const {legs,warnings}=parseSlip(raw);
+    if(!legs.length){ $("#parseMsg").textContent="Couldn't read any picks — check the format."; return; }
+    syncDraftFromForm();                 // keep any other field edits
+    draft.legs = legs.map(({when,...l})=>l);   // drop the per-leg time for now
+    // set bet type based on count (you choose parlay/builder/singles next if >1)
+    draft.type = legs.length>1 ? (draft.type==="single"?"parlay":draft.type) : "single";
+    // use the first leg's date if present
+    const firstWhen = legs.find(l=>l.when)?.when || "";
+    const dm = firstWhen.match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);
+    if(dm){ const yr=dm[3].length===2?"20"+dm[3]:dm[3]; draft.date=`${yr}-${dm[2].padStart(2,"0")}-${dm[1].padStart(2,"0")}`; }
+    drawModal();
+    // after redraw, show review note + (if multi) the type chooser
+    const msg=$("#parseMsg");
+    if(msg){
+      msg.innerHTML = `✓ Read ${legs.length} pick${legs.length>1?"s":""}.${warnings?` <span style="color:var(--amber)">Double-check the highlighted fields.</span>`:" Review and save."}`;
+    }
+    if(legs.length>1) askSlipType(legs.length);
+  };
+
+  const impBtn=$("#impliedBtn");
+  if(impBtn) impBtn.onclick=()=>{
+    syncDraftFromForm();
+    const bookie=betDecOdds(draft);
+    if(!bookie){ toast("Enter the odds first"); return; }
+    $("#trueProb").value=(impliedProb(bookie)*100).toFixed(1);
+    toast("Filled with the bookie's implied %");
+  };
 
   $("#suggestBtn").onclick=()=>{
     syncDraftFromForm();
@@ -732,13 +906,13 @@ function wireModal(){
     const probInput=parseFloat($("#trueProb").value);
     const out=$("#stakeOut");
     if(!bookie||!probInput){ out.style.display="block"; out.innerHTML=`<span class="muted">Enter the bet's odds and your estimated win % first.</span>`; return; }
-    const trueDec=100/probInput;             // prob% -> decimal
+    const trueDec=100/probInput;
     draft.trueOdds=trueDec;
     const r=kellyStake(bookie, trueDec, settings.bankroll, settings.kellyFraction);
     out.style.display="block";
     if(r.edgePct<=0){
       out.innerHTML=`<div class="big neg">No bet</div>
-        <div class="edge neg">Negative edge (${r.edgePct.toFixed(1)}% EV). The line doesn't beat your estimate — Kelly says skip it.</div>`;
+        <div class="edge neg">Your % is the same or lower than the bookie's implied chance, so there's no edge. Kelly says skip it (or you only think it's a value bet if your % is higher than the implied number).</div>`;
     } else {
       const units=settings.defaultUnit? (r.stake/settings.defaultUnit):0;
       out.innerHTML=`<div class="big">${money(r.stake)}</div>
@@ -751,7 +925,19 @@ function wireModal(){
 
   $("#saveBet").onclick=()=>{
     syncDraftFromForm();
-    if(!draft.legs.some(l=>l.sel||l.odds)){ toast("Add at least one selection"); return; }
+    if(!draft.legs.some(l=>l.pick||l.match||l.odds)){ toast("Add at least your pick and the odds"); return; }
+    // saving a pasted slip as separate singles
+    if(pendingSingles && draft.legs.length>1){
+      const made=draft.legs.map(l=>({
+        id:uid(), created:Date.now(), type:"single", legs:[l],
+        stake:draft.stake||settings.defaultUnit, status:draft.status||"pending",
+        date:draft.date, sport:draft.sport, book:draft.book, tags:draft.tags, note:draft.note,
+        manualOdds:null, trueOdds:null
+      }));
+      made.forEach(b=>{ bets.unshift(b); pushBet(b); });
+      pendingSingles=null; save(); closeModal(); renderAll(); toast(`Added ${made.length} singles`);
+      return;
+    }
     const i=bets.findIndex(b=>b.id===draft.id);
     if(i>=0) bets[i]=draft; else bets.unshift(draft);
     save(); pushBet(draft); closeModal(); renderAll(); toast(i>=0?"Bet updated":"Bet added");
@@ -765,7 +951,7 @@ function settle(id,status){ const b=bets.find(x=>x.id===id); if(b){b.status=stat
 function shareBet(id){
   const b=bets.find(x=>x.id===id); if(!b) return;
   const odds=fmtOdds(betDecOdds(b));
-  const txt=`${b.legs.map(l=>l.sel+" @ "+fmtOdds(l.odds)).join(" + ")} | ${money(b.stake)} @ ${odds} → ${money(b.stake*betDecOdds(b))} [${b.status}]`;
+  const txt=`${b.legs.map(l=>(l.pick||l.sel)+(l.match?" ["+l.match+"]":"")+" @ "+fmtOdds(l.odds)).join(" + ")} | ${money(b.stake)} @ ${odds} → ${money(b.stake*betDecOdds(b))} [${b.status}]`;
   navigator.clipboard?.writeText(txt).then(()=>toast("Bet copied to clipboard"),()=>toast(txt));
 }
 
@@ -901,9 +1087,9 @@ applyTheme(); syncTopBtns(); renderAll();
 if(!bets.length && !localStorage.getItem("ledger.seeded")){
   localStorage.setItem("ledger.seeded","1");
   bets=[
-    {id:uid(),created:Date.now()-3e5,type:"single",legs:[{sel:"NaVi to win vs FaZe",odds:1.85}],stake:25,status:"won",date:today(),sport:"CS2",book:"Bet365",tags:["value"],note:"NaVi strong on Mirage",manualOdds:null,trueOdds:1.72},
-    {id:uid(),created:Date.now()-2e5,type:"parlay",legs:[{sel:"T1 to win",odds:1.5},{sel:"Over 2.5 maps",odds:1.8}],stake:10,status:"lost",date:today(),sport:"LoL",book:"Pinnacle",tags:["acca"],note:"",manualOdds:null,trueOdds:null},
-    {id:uid(),created:Date.now()-1e5,type:"single",legs:[{sel:"Lakers -4.5",odds:1.91}],stake:20,status:"pending",date:today(),sport:"NBA",book:"DraftKings",tags:[],note:"",manualOdds:null,trueOdds:null}
+    {id:uid(),created:Date.now()-3e5,type:"single",legs:[{match:"NaVi vs FaZe",market:"Match winner",pick:"NaVi to win",odds:1.85,sel:"NaVi to win (Match winner) · NaVi vs FaZe"}],stake:25,status:"won",date:today(),sport:"CS2",book:"Bet365",tags:["value"],note:"NaVi strong on Mirage",manualOdds:null,trueOdds:1.72},
+    {id:uid(),created:Date.now()-2e5,type:"parlay",legs:[{match:"T1 vs GenG",market:"Match winner",pick:"T1 to win",odds:1.5,sel:"T1 to win"},{match:"T1 vs GenG",market:"Total maps",pick:"Over 2.5 maps",odds:1.8,sel:"Over 2.5 maps"}],stake:10,status:"lost",date:today(),sport:"LoL",book:"Pinnacle",tags:["acca"],note:"",manualOdds:null,trueOdds:null},
+    {id:uid(),created:Date.now()-1e5,type:"single",legs:[{match:"Lakers vs Suns",market:"Spread",pick:"Lakers -4.5",odds:1.91,sel:"Lakers -4.5"}],stake:20,status:"pending",date:today(),sport:"NBA",book:"DraftKings",tags:[],note:"",manualOdds:null,trueOdds:null}
   ];
   save(); renderAll();
 }
